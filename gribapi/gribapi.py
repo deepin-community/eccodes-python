@@ -20,7 +20,7 @@ Numpy is a package used for scientific computing in Python and an efficient cont
 
 @em Requirements:
 
-    - Python 3.5 or higher
+    - Python 3.8 or higher
     - NumPy
 
 """
@@ -30,6 +30,8 @@ import sys
 from functools import wraps
 
 import numpy as np
+
+from gribapi.errors import GribInternalError
 
 from . import errors
 from .bindings import ENC
@@ -44,11 +46,7 @@ except NameError:
     file = io.IOBase
     long = int
 
-KEYTYPES = {
-    1: int,
-    2: float,
-    3: str,
-}
+KEYTYPES = {1: int, 2: float, 3: str, 4: bytes}
 
 CODES_PRODUCT_ANY = 0
 """ Generic product kind """
@@ -970,7 +968,7 @@ def grib_get_double(msgid, key):
     return value_p[0]
 
 
-@require(msgid=int, key=str, value=(int, float, np.float16, np.float32, str))
+@require(msgid=int, key=str, value=(int, float, np.float16, np.float32, np.int64, str))
 def grib_set_long(msgid, key, value):
     """
     @brief Set the integer value for a key in a message.
@@ -1036,6 +1034,8 @@ def codes_new_from_samples(samplename, product_kind):
         return grib_new_from_samples(samplename)
     if product_kind == CODES_PRODUCT_BUFR:
         return codes_bufr_new_from_samples(samplename)
+    if product_kind == CODES_PRODUCT_ANY:
+        return codes_any_new_from_samples(samplename)
     raise ValueError("Invalid product kind %d" % product_kind)
 
 
@@ -1078,6 +1078,25 @@ def codes_bufr_new_from_samples(samplename):
     h = lib.codes_bufr_handle_new_from_samples(ffi.NULL, samplename.encode(ENC))
     if h == ffi.NULL:
         raise errors.FileNotFoundError(f"bufr_new_from_samples failed: {samplename}")
+    return put_handle(h)
+
+
+@require(samplename=str)
+def codes_any_new_from_samples(samplename):
+    """
+    @brief Create a new valid message from a sample.
+
+    The available samples are picked up from the directory pointed to
+    by the environment variable ECCODES_SAMPLES_PATH.
+    To know where the samples directory is run the codes_info tool.\n
+
+    @param samplename   name of the sample to be used
+    @return             id of the message loaded in memory
+    @exception CodesInternalError
+    """
+    h = lib.codes_handle_new_from_samples(ffi.NULL, samplename.encode(ENC))
+    if h == ffi.NULL:
+        raise errors.FileNotFoundError(f"any_new_from_samples failed: {samplename}")
     return put_handle(h)
 
 
@@ -1140,6 +1159,8 @@ def grib_set_double_array(msgid, key, inarray):
     length = len(inarray)
     if isinstance(inarray, np.ndarray):
         nd = inarray
+        # ECC-1555
+        length = inarray.size
         if length > 0:
             if not isinstance(nd[0], float):
                 # ECC-1042: input array of integers
@@ -1170,6 +1191,26 @@ def grib_get_double_array(msgid, key):
     arr = np.empty((nval,), dtype="float64")
     vals_p = ffi.cast("double *", arr.ctypes.data)
     err = lib.grib_get_double_array(h, key.encode(ENC), vals_p, length_p)
+    GRIB_CHECK(err)
+    return arr
+
+
+@require(msgid=int, key=str)
+def grib_get_float_array(msgid, key):
+    """
+    @brief Get the value of the key as a NumPy array of floats.
+
+    @param msgid   id of the message loaded in memory
+    @param key     key name
+    @return        numpy.ndarray
+    @exception CodesInternalError
+    """
+    h = get_handle(msgid)
+    nval = grib_get_size(msgid, key)
+    length_p = ffi.new("size_t*", nval)
+    arr = np.empty((nval,), dtype="float32")
+    vals_p = ffi.cast("float *", arr.ctypes.data)
+    err = lib.grib_get_float_array(h, key.encode(ENC), vals_p, length_p)
     GRIB_CHECK(err)
     return arr
 
@@ -1696,9 +1737,7 @@ def grib_set_key_vals(gribid, key_vals):
             if not isinstance(kv, str):
                 raise TypeError("Invalid list/tuple element type '%s'" % kv)
             if "=" not in str(kv):
-                raise errors.GribInternalError(
-                    "Invalid list/tuple element format '%s'" % kv
-                )
+                raise GribInternalError("Invalid list/tuple element format '%s'" % kv)
             if len(key_vals_str) > 0:
                 key_vals_str += ","
             key_vals_str += kv
@@ -1904,7 +1943,7 @@ def grib_get_native_type(msgid, key):
     """
     @brief Retrieve the native type of a key.
 
-    Possible values can be int, float or string.
+    Possible values can be int, float or str.
 
     @param msgid   id of the message loaded in memory
     @param key     key we want to find out the type for
@@ -1928,7 +1967,7 @@ def grib_get(msgid, key, ktype=None):
 
     The type of value returned depends on the native type of the requested key.
     The type of value returned can be forced by using the type argument of the
-    function. The type argument can be int, float or str.
+    function. The ktype argument can be int, float, str or bytes.
 
     The \em msgid references a message loaded in memory.
 
@@ -1938,7 +1977,7 @@ def grib_get(msgid, key, ktype=None):
 
     @param msgid      id of the message loaded in memory
     @param key        key name
-    @param ktype      the type we want the output in (int, float or str), native type if not specified
+    @param ktype      the type we want the output in, native type if not specified
     @return           scalar value of key as int, float or str
     @exception CodesInternalError
     """
@@ -1955,6 +1994,8 @@ def grib_get(msgid, key, ktype=None):
         result = grib_get_double(msgid, key)
     elif ktype is str:
         result = grib_get_string(msgid, key)
+    elif ktype is bytes:
+        result = grib_get_string(msgid, key)
 
     return result
 
@@ -1966,13 +2007,13 @@ def grib_get_array(msgid, key, ktype=None):
 
     The type of the array returned depends on the native type of the requested key.
     For numeric data, the output array will be stored in a NumPy ndarray.
-    The type of value returned can be forced by using the type argument of the function.
-    The type argument can be int, float or string.
+    The type of value returned can be forced by using the ktype argument of the function.
+    The ktype argument can be int, float, float32, float64, str or bytes.
 
-    @param msgid      id of the message loaded in memory
-    @param key        the key to get the value for
-    @param ktype      the type we want the output in (can be int, float or string), native type if not specified
-    @return           numpy.ndarray
+    @param msgid  id of the message loaded in memory
+    @param key    the key to get the value for
+    @param ktype  the type we want the output in, native type if not specified
+    @return       numpy.ndarray or None
     @exception CodesInternalError
     """
     if ktype is None:
@@ -1981,16 +2022,20 @@ def grib_get_array(msgid, key, ktype=None):
     result = None
     if ktype is int:
         result = grib_get_long_array(msgid, key)
-    elif ktype is float:
+    elif ktype is float or ktype is np.float64:
         result = grib_get_double_array(msgid, key)
+    elif ktype is np.float32:
+        result = grib_get_float_array(msgid, key)
     elif ktype is str:
+        result = grib_get_string_array(msgid, key)
+    elif ktype is bytes:
         result = grib_get_string_array(msgid, key)
 
     return result
 
 
 @require(gribid=int)
-def grib_get_values(gribid):
+def grib_get_values(gribid, ktype=float):
     """
     @brief Retrieve the contents of the 'values' key for a GRIB message.
 
@@ -1998,11 +2043,23 @@ def grib_get_values(gribid):
 
     \b Examples: \ref grib_print_data.py "grib_print_data.py", \ref grib_samples.py "grib_samples.py"
 
-    @param gribid   id of the GRIB loaded in memory
-    @return         numpy.ndarray
+    @param gribid    id of the GRIB loaded in memory
+    @param ktype     data type of the result: numpy.float32 or numpy.float64
+    @return          numpy.ndarray
     @exception CodesInternalError
     """
-    return grib_get_double_array(gribid, "values")
+    result = None
+
+    if ktype is np.float32:
+        result = grib_get_float_array(gribid, "values")
+    elif ktype is np.float64 or ktype is float:
+        result = grib_get_double_array(gribid, "values")
+    else:
+        raise TypeError(
+            f"Unsupported data type {ktype}. Supported data types are numpy.float32 and numpy.float64"
+        )
+
+    return result
 
 
 @require(gribid=int)
@@ -2060,7 +2117,7 @@ def grib_set(msgid, key, value):
     @param value      scalar value to set for key
     @exception CodesInternalError
     """
-    if isinstance(value, int):
+    if isinstance(value, (int, np.int64)):
         grib_set_long(msgid, key, value)
     elif isinstance(value, (float, np.float16, np.float32, np.float64)):
         grib_set_double(msgid, key, value)
@@ -2073,7 +2130,7 @@ def grib_set(msgid, key, value):
         hint = ""
         if hasattr(value, "__iter__"):
             hint = " (Hint: for array keys use codes_set_array(msgid, key, value))"
-        raise errors.GribInternalError(
+        raise GribInternalError(
             "Invalid type of value when setting key '%s'%s." % (key, hint)
         )
 
@@ -2109,7 +2166,7 @@ def grib_set_array(msgid, key, value):
         try:
             int(val0)
         except (ValueError, TypeError):
-            raise errors.GribInternalError(
+            raise GribInternalError(
                 "Invalid type of value when setting key '%s'." % key
             )
         grib_set_long_array(msgid, key, value)
@@ -2166,9 +2223,7 @@ def grib_index_select(indexid, key, value):
     elif isinstance(value, str):
         grib_index_select_string(indexid, key, value)
     else:
-        raise errors.GribInternalError(
-            "Invalid type of value when setting key '%s'." % key
-        )
+        raise GribInternalError("Invalid type of value when setting key '%s'." % key)
 
 
 @require(indexid=int, filename=str)
@@ -2228,11 +2283,12 @@ def grib_gts_header(flag):
         lib.grib_gts_header_off(context)
 
 
-def grib_get_api_version():
+def grib_get_api_version(vformat=str):
     """
     @brief Get the API version.
 
-    Returns the version of the API as a string in the format "major.minor.revision".
+    Returns the version of the API as a string in the format "major.minor.revision"
+    or as an integer (10000*major + 100*minor + revision)
     """
 
     def div(v, d):
@@ -2242,11 +2298,14 @@ def grib_get_api_version():
         raise RuntimeError("Could not load the ecCodes library!")
 
     v = lib.grib_get_api_version()
-    v, revision = div(v, 100)
-    v, minor = div(v, 100)
-    major = v
 
-    return "%d.%d.%d" % (major, minor, revision)
+    if vformat is str:
+        v, revision = div(v, 100)
+        v, minor = div(v, 100)
+        major = v
+        return "%d.%d.%d" % (major, minor, revision)
+    else:
+        return v
 
 
 __version__ = grib_get_api_version()
@@ -2262,6 +2321,21 @@ def codes_get_version_info():
     vinfo["eccodes"] = grib_get_api_version()
     vinfo["bindings"] = bindings_version
     return vinfo
+
+
+@require(order=int)
+def codes_get_gaussian_latitudes(order):
+    """
+    @brief Return the Gaussian latitudes
+
+    @param order    The Gaussian order/number (also called the truncation)
+    @return         A list of latitudes with 2*order elements
+    """
+    num_elems = 2 * order
+    outlats_p = ffi.new("double[]", num_elems)
+    err = lib.grib_get_gaussian_latitudes(order, outlats_p)
+    GRIB_CHECK(err)
+    return outlats_p
 
 
 @require(msgid=int)
@@ -2351,6 +2425,13 @@ def grib_set_samples_path(samples_path):
     lib.grib_context_set_samples_path(context, samples_path.encode(ENC))
 
 
+def grib_context_delete():
+    """
+    @brief Wipe all the cached data and definitions files in the context
+    """
+    lib.grib_context_delete(ffi.NULL)
+
+
 def codes_bufr_multi_element_constant_arrays_on():
     """
     @brief BUFR: Turn on the mode where you get multiple elements
@@ -2371,6 +2452,19 @@ def codes_bufr_multi_element_constant_arrays_off():
     """
     context = lib.grib_context_get_default()
     lib.codes_bufr_multi_element_constant_arrays_off(context)
+
+
+@require(msgid=int)
+def codes_dump(msgid, output_fileobj=sys.stdout, mode="wmo", flags=0):
+    """
+    @brief Print all keys to an output file object, with the given dump mode and flags
+
+    @param msgid          id of the message loaded in memory
+    @param output_fileobj output file object e.g., sys.stdout
+    @param mode           dump mode e.g., "wmo", "debug", "json"
+    """
+    h = get_handle(msgid)
+    lib.grib_dump_content(h, output_fileobj, mode.encode(ENC), flags, ffi.NULL)
 
 
 # Convert the C codes_bufr_header struct to a Python dictionary
@@ -2434,6 +2528,25 @@ def codes_bufr_key_is_header(msgid, key):
     """
     h = get_handle(msgid)
     err, value = err_last(lib.codes_bufr_key_is_header)(h, key.encode(ENC))
+    GRIB_CHECK(err)
+    return value
+
+
+@require(msgid=int)
+def codes_bufr_key_is_coordinate(msgid, key):
+    """
+    @brief Check if the BUFR key corresponds to a coordinate descriptor.
+
+    If the data section has not been unpacked, then passing in a key from
+    the data section will throw KeyValueNotFoundError.
+
+    @param msgid      id of the BUFR message loaded in memory
+    @param key        key name
+    @return           1->coordinate, 0->not coordinate
+    @exception CodesInternalError
+    """
+    h = get_handle(msgid)
+    err, value = err_last(lib.codes_bufr_key_is_coordinate)(h, key.encode(ENC))
     GRIB_CHECK(err)
     return value
 
