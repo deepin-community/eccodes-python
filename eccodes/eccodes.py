@@ -27,8 +27,10 @@ from gribapi import any_new_from_file as codes_any_new_from_file
 from gribapi import bindings_version
 from gribapi import bufr_new_from_file as codes_bufr_new_from_file
 from gribapi import (
+    codes_any_new_from_samples,
     codes_bufr_copy_data,
     codes_bufr_extract_headers,
+    codes_bufr_key_is_coordinate,
     codes_bufr_key_is_header,
     codes_bufr_keys_iterator_delete,
     codes_bufr_keys_iterator_get_name,
@@ -39,7 +41,9 @@ from gribapi import (
     codes_bufr_multi_element_constant_arrays_on,
     codes_bufr_new_from_samples,
     codes_definition_path,
+    codes_dump,
     codes_extract_offsets,
+    codes_get_gaussian_latitudes,
     codes_get_library_path,
     codes_get_version_info,
     codes_new_from_file,
@@ -47,6 +51,7 @@ from gribapi import (
     codes_samples_path,
 )
 from gribapi import grib_clone as codes_clone
+from gribapi import grib_context_delete as codes_context_delete
 from gribapi import grib_copy_namespace as codes_copy_namespace
 from gribapi import grib_count_in_file as codes_count_in_file
 from gribapi import grib_find_nearest as codes_grib_find_nearest
@@ -60,6 +65,7 @@ from gribapi import grib_get_double_array as codes_get_double_array
 from gribapi import grib_get_double_element as codes_get_double_element
 from gribapi import grib_get_double_elements as codes_get_double_elements
 from gribapi import grib_get_elements as codes_get_elements
+from gribapi import grib_get_float_array as codes_get_float_array
 from gribapi import grib_get_long as codes_get_long
 from gribapi import grib_get_long_array as codes_get_long_array
 from gribapi import grib_get_message as codes_get_message
@@ -210,11 +216,6 @@ from gribapi.errors import (
     WrongTypeError,
 )
 
-from .high_level.bufr import BufrFile, BufrMessage
-from .high_level.gribfile import GribFile
-from .high_level.gribindex import GribIndex
-from .high_level.gribmessage import GribMessage
-
 __all__ = [
     "__version__",
     "ArrayTooSmallError",
@@ -222,13 +223,12 @@ __all__ = [
     "AttributeNotFoundError",
     "bindings_version",
     "BufferTooSmallError",
-    "BufrFile",
-    "BufrMessage",
     "CodeNotFoundInTableError",
     "codes_any_new_from_file",
     "codes_bufr_copy_data",
     "codes_bufr_extract_headers",
     "codes_bufr_key_is_header",
+    "codes_bufr_key_is_coordinate",
     "codes_bufr_keys_iterator_delete",
     "codes_bufr_keys_iterator_get_name",
     "codes_bufr_keys_iterator_new",
@@ -238,6 +238,7 @@ __all__ = [
     "codes_bufr_multi_element_constant_arrays_on",
     "codes_bufr_new_from_file",
     "codes_bufr_new_from_samples",
+    "codes_any_new_from_samples",
     "CODES_CHECK",
     "codes_clone",
     "codes_copy_namespace",
@@ -251,6 +252,8 @@ __all__ = [
     "codes_get_double_elements",
     "codes_get_double",
     "codes_get_elements",
+    "codes_get_float_array",
+    "codes_get_gaussian_latitudes",
     "codes_get_library_path",
     "codes_get_long_array",
     "codes_get_long",
@@ -326,6 +329,7 @@ __all__ = [
     "CODES_PRODUCT_METAR",
     "codes_release",
     "codes_samples_path",
+    "codes_dump",
     "codes_set_array",
     "codes_set_definitions_path",
     "codes_set_double_array",
@@ -346,6 +350,7 @@ __all__ = [
     "codes_skip_function",
     "codes_skip_read_only",
     "codes_write",
+    "codes_context_delete",
     "CodesInternalError",
     "ConceptNoMatchError",
     "ConstantFieldError",
@@ -360,10 +365,7 @@ __all__ = [
     "FunctionalityNotEnabledError",
     "FunctionNotImplementedError",
     "GeocalculusError",
-    "GribFile",
-    "GribIndex",
     "GribInternalError",
-    "GribMessage",
     "HashArrayNoMatchError",
     "InternalArrayTooSmallError",
     "InternalError",
