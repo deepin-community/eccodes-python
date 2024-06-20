@@ -38,7 +38,7 @@ struct grib_values {
   int         has_value;
   int         equal;
   grib_values* next;
-} ;
+};
 
 typedef struct grib_handle    grib_handle;
 typedef struct grib_multi_handle    grib_multi_handle;
@@ -74,7 +74,8 @@ int grib_count_in_file(grib_context* c, FILE* f,int* n);
 grib_handle* grib_handle_new_from_file(grib_context* c, FILE* f, int* error);
 grib_handle* grib_handle_new_from_message_copy(grib_context* c, const void* data, size_t data_len);
 grib_handle* grib_handle_new_from_samples (grib_context* c, const char* sample_name);
-grib_handle* grib_handle_clone(const grib_handle* h)                 ;
+grib_handle* grib_handle_clone(const grib_handle* h);
+grib_handle* grib_handle_clone_headers_only(const grib_handle* h);
 int grib_handle_delete(grib_handle* h);
 grib_multi_handle* grib_multi_handle_new(grib_context* c);
 int grib_multi_handle_append(grib_handle* h,int start_section,grib_multi_handle* mh);
@@ -105,10 +106,11 @@ int grib_get_length(const grib_handle* h, const char* key,size_t *length);
 int grib_get_long(const grib_handle* h, const char* key, long* value);
 int grib_get_double(const grib_handle* h, const char* key, double* value);
 int grib_get_double_element(const grib_handle* h, const char* key, int i, double* value);
-int grib_get_double_elements(const grib_handle* h, const char* key, int* i, long size, double* value);
+int grib_get_double_elements(const grib_handle* h, const char* key, const int* index_array, long size, double* value);
 int grib_get_string(const grib_handle* h, const char* key, char* mesg, size_t *length);
 int grib_get_string_array(const grib_handle* h, const char* key, char** vals, size_t *length);
 int grib_get_double_array(const grib_handle* h, const char* key, double* vals, size_t *length);
+int grib_get_float_array(const grib_handle* h, const char* key, float* vals, size_t *length);
 int grib_get_long_array(const grib_handle* h, const char* key, long* vals, size_t *length);
 
 int grib_copy_namespace(grib_handle* dest, const char* name, grib_handle* src);
@@ -120,8 +122,11 @@ int grib_set_long_array(grib_handle* h, const char*  key , const long* vals, siz
 
 int grib_set_string_array(grib_handle* h, const char *key, const char **vals, size_t length);
 
+void grib_dump_content(const grib_handle* h, FILE* out, const char* mode, unsigned long option_flags, void* arg);
 grib_context* grib_context_get_default(void);
-void grib_gts_header_on(grib_context* c) ;
+void grib_context_delete(grib_context* c);
+
+void grib_gts_header_on(grib_context* c);
 void grib_gts_header_off(grib_context* c);
 void grib_gribex_mode_on(grib_context* c);
 void grib_gribex_mode_off(grib_context* c);
@@ -167,7 +172,7 @@ int grib_get_message_size(const grib_handle* h,size_t* size);
 int parse_keyval_string(const char *grib_tool, char *arg, int values_required, int default_type, grib_values values[], int *count);
 
 int grib_get_data(const grib_handle *h, double *lats, double *lons, double *values);
-
+int grib_get_gaussian_latitudes(long trunc, double* lats);
 
 /* EXPERIMENTAL */
 typedef struct codes_bufr_header {

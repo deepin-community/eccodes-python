@@ -1,0 +1,3 @@
+Tests: tryload
+Depends: python3-eccodes
+Restrictions: superficial

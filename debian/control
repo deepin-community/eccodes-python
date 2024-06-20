@@ -8,8 +8,8 @@ Build-Depends: debhelper-compat (= 13),
   python3-all-dev, 
   python3-setuptools,
   python3-ecmwflibs
-Standards-Version: 4.6.0
-Homepage: https://pypi.org/project/eccodes-python/
+Standards-Version: 4.6.2
+Homepage: https://github.com/ecmwf/eccodes-python
 Vcs-Browser: https://salsa.debian.org:/science-team/eccodes-python.git
 Vcs-Git: https://salsa.debian.org:/science-team/eccodes-python.git -b debian/latest
 
