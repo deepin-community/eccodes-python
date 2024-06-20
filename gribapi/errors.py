@@ -27,7 +27,6 @@ class GribInternalError(Exception):
         # Call the base class constructor with the parameters it needs
         Exception.__init__(self, value)
         if type(value) is int:
-
             self.msg = ffi.string(lib.grib_get_error_message(value)).decode(ENC)
         else:
             self.msg = value
@@ -193,7 +192,7 @@ class InvalidIndexError(GribInternalError):
 
 
 class InvalidGribError(GribInternalError):
-    """Invalid grib id."""
+    """Invalid GRIB id."""
 
 
 class InvalidFileError(GribInternalError):

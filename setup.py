@@ -39,6 +39,10 @@ def parse_version_from(path):
 install_requires = ["numpy"]
 if sys.version_info < (3, 7):
     install_requires = ["numpy<1.20"]
+elif sys.version_info < (3, 8):
+    install_requires = ["numpy<1.22"]
+elif sys.version_info < (3, 9):
+    install_requires = ["numpy<1.25"]
 
 install_requires += ["attrs", "cffi", "findlibs"]
 
@@ -66,10 +70,10 @@ setuptools.setup(
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: Apache Software License",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python :: Implementation :: PyPy",
         "Operating System :: OS Independent",

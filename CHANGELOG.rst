@@ -2,6 +2,74 @@
 Changelog for eccodes-python
 ============================
 
+1.7.0 (2024-02-26)
+--------------------
+- ECC-1761: Add function to extract message offsets and sizes
+- ECC-1742: Add function to clone only the meta-data of a message
+
+1.6.1 (2023-10-02)
+--------------------
+
+- ECC-1693: Update minimum recommended version
+- Fix flake8 warning E721
+
+1.6.0 (2023-07-11)
+--------------------
+
+- ECC-1630: Get API version as an integer
+- ECC-1622: Drop Python version 3.7
+- ECC-1601: GRIB: Support data values array decoded in single-precision
+- ECC-1611: Add function to determine if a BUFR key is a coordinate descriptor
+
+1.5.2 (2023-04-04)
+--------------------
+
+- Add support for Python versions 3.10 and 3.11
+- ECC-1555: 2D numpy array incorrectly handled
+- ECC-1539: Use the 'warnings' library for selfcheck
+- ECC-1538: Add support for CODES_TYPE_BYTES
+- ECC-1524: Check values in High-level Message.set function should retrieve based on value type
+- ECC-1527: Handle floats in high-level Message.set function check values
+
+
+1.5.1 (2023-01-25)
+--------------------
+
+- ECC-1446: Data file era5-levels-members.grib not included in released tar file
+- ECC-1460: Cannot import eccodes on M1 MacBook Pro
+- ECC-1505: High-level Message.set function should allow dictionary and check result
+
+1.5.0 (2022-08-25)
+--------------------
+
+- ECC-1404: Add the grib_get_gaussian_latitudes() function
+- ECC-1405: Add new function: codes_any_new_from_samples
+- ECC-1415: Implement a higher-level Python interface (still experimental)
+- ECC-1429: Remove the file 'eccodes/messages.py'
+- GitHub pull request #62: add pypi badge
+
+1.4.2 (2022-05-20)
+--------------------
+
+- ECC-1389: Drop Python version 3.5 and 3.6
+- ECC-1390: NameError: name 'GribInternalError' is not defined
+- Add test for GRIB bitmap
+
+
+1.4.1 (2022-03-03)
+--------------------
+
+- ECC-1351: Support numpy.int64 in codes_set() and codes_set_long()
+- ECC-1317: Data file tiggelam_cnmc_sfc.grib2 not included in released tar file
+
+
+1.4.0 (2021-12-03)
+--------------------
+
+- ECC-1234: Remove the experimental high-level interface
+- ECC-1282: Add codes_dump()
+
+
 1.3.4 (2021-08-27)
 --------------------
 

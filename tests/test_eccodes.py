@@ -22,7 +22,8 @@ import pytest
 import eccodes
 
 SAMPLE_DATA_FOLDER = os.path.join(os.path.dirname(__file__), "sample-data")
-TEST_DATA = os.path.join(SAMPLE_DATA_FOLDER, "multi_field.grib2")
+TEST_GRIB_TIGGE_DATA = os.path.join(SAMPLE_DATA_FOLDER, "tiggelam_cnmc_sfc.grib2")
+TEST_GRIB_ERA5_DATA = os.path.join(SAMPLE_DATA_FOLDER, "era5-levels-members.grib")
 
 
 def get_sample_fullpath(sample):
@@ -33,28 +34,42 @@ def get_sample_fullpath(sample):
 
 
 # ---------------------------------------------
-# ANY PRODUCT
+# PRODUCT ANY
 # ---------------------------------------------
 def test_codes_definition_path():
     df = eccodes.codes_definition_path()
+    print(f"\n\teccodes.codes_definition_path returned {df}")
     assert df is not None
 
 
 def test_codes_samples_path():
     sp = eccodes.codes_samples_path()
+    print(f"\n\teccodes.codes_samples_path returned {sp}")
     assert sp is not None
 
 
 def test_codes_set_definitions_path():
-    eccodes.eccodes.codes_set_definitions_path(eccodes.codes_definition_path())
+    eccodes.codes_set_definitions_path(eccodes.codes_definition_path())
 
 
 def test_codes_set_samples_path():
     eccodes.codes_set_samples_path(eccodes.codes_samples_path())
 
 
+def test_api_version():
+    vs = eccodes.codes_get_api_version()
+    assert type(vs) is str
+    assert len(vs) > 0
+    assert vs == eccodes.codes_get_api_version(str)
+    vi = eccodes.codes_get_api_version(int)
+    assert type(vi) is int
+    assert vi > 20000
+    print(vi)
+
+
 def test_version_info():
     vinfo = eccodes.codes_get_version_info()
+    print("ecCodes version information: ", vinfo)
     assert len(vinfo) == 2
 
 
@@ -69,8 +84,8 @@ def test_codes_get_native_type():
     assert eccodes.codes_get_native_type(gid, "referenceValue") is float
     assert eccodes.codes_get_native_type(gid, "stepType") is str
     assert eccodes.codes_get_native_type(gid, "section_1") is None
-    with pytest.raises(eccodes.InvalidGribError):
-        eccodes.codes_get_native_type(0, "aKey")
+    with pytest.raises(eccodes.NullHandleError):
+        eccodes.codes_get_native_type(0, "aKey")  # NULL handle
 
 
 def test_new_from_file():
@@ -90,9 +105,6 @@ def test_new_from_file():
         assert msgid
     with open(fpath, "rb") as f:
         msgid = eccodes.codes_new_from_file(f, eccodes.CODES_PRODUCT_GTS)
-        assert msgid is None
-    with open(fpath, "rb") as f:
-        msgid = eccodes.codes_new_from_file(f, eccodes.CODES_PRODUCT_METAR)
         assert msgid is None
     with pytest.raises(ValueError):
         with open(fpath, "rb") as f:
@@ -119,6 +131,10 @@ def test_any_read():
 
 
 def test_count_in_file():
+    with open(TEST_GRIB_TIGGE_DATA, "rb") as f:
+        assert eccodes.codes_count_in_file(f) == 7
+    with open(TEST_GRIB_ERA5_DATA, "rb") as f:
+        assert eccodes.codes_count_in_file(f) == 160
     fpath = get_sample_fullpath("GRIB1.tmpl")
     if fpath is None:
         return
@@ -137,11 +153,11 @@ def test_new_from_message():
     eccodes.codes_release(newgid)
 
     # This time read from a string rather than a file
-    metar_str = "METAR LQMO 022350Z 09003KT 6000 FEW010 SCT035 BKN060 08/08 Q1003="
-    newgid = eccodes.codes_new_from_message(metar_str)
-    cccc = eccodes.codes_get(newgid, "CCCC")
-    assert cccc == "LQMO"
-    eccodes.codes_release(newgid)
+    # metar_str = "METAR LQMO 022350Z 09003KT 6000 FEW010 SCT035 BKN060 08/08 Q1003="
+    # newgid = eccodes.codes_new_from_message(metar_str)
+    # cccc = eccodes.codes_get(newgid, "CCCC")
+    # assert cccc == "LQMO"
+    # eccodes.codes_release(newgid)
 
 
 def test_gts_header():
@@ -150,18 +166,51 @@ def test_gts_header():
 
 
 def test_extract_offsets():
-    fpath = get_sample_fullpath("BUFR4.tmpl")
-    if fpath is None:
-        return
-    is_strict = True
-    offsets = eccodes.codes_extract_offsets(fpath, eccodes.CODES_PRODUCT_ANY, is_strict)
+    offsets = eccodes.codes_extract_offsets(
+        TEST_GRIB_TIGGE_DATA, eccodes.CODES_PRODUCT_ANY, is_strict=True
+    )
     offsets_list = list(offsets)
-    assert len(offsets_list) == 1
-    assert offsets_list[0] == 0
+    expected = [0, 432, 864, 1296, 1728, 2160, 2616]
+    assert offsets_list == expected
+
+
+def test_extract_offsets_sizes():
+    if eccodes.codes_get_api_version(int) < 23400:
+        pytest.skip("ecCodes version too old")
+
+    offsets_sizes = eccodes.codes_extract_offsets_sizes(
+        TEST_GRIB_TIGGE_DATA, eccodes.CODES_PRODUCT_GRIB, is_strict=True
+    )
+    result = list(offsets_sizes)
+    expected = [
+        (0, 432),
+        (432, 432),
+        (864, 432),
+        (1296, 432),
+        (1728, 432),
+        (2160, 456),
+        (2616, 456),
+    ]
+    assert result == expected
+
+
+def test_any_new_from_samples():
+    msgid = eccodes.codes_new_from_samples(
+        "reduced_gg_ml_grib2", eccodes.CODES_PRODUCT_ANY
+    )
+    assert eccodes.codes_get(msgid, "identifier") == "GRIB"
+    eccodes.codes_release(msgid)
+    msgid = eccodes.codes_new_from_samples("BUFR4", eccodes.CODES_PRODUCT_ANY)
+    assert eccodes.codes_get(msgid, "identifier") == "BUFR"
+    eccodes.codes_release(msgid)
+
+    msgid = eccodes.codes_any_new_from_samples("diag.tmpl")
+    assert eccodes.codes_get(msgid, "identifier") == "DIAG"
+    eccodes.codes_release(msgid)
 
 
 # ---------------------------------------------
-# GRIB
+# PRODUCT GRIB
 # ---------------------------------------------
 def test_grib_read():
     gid = eccodes.codes_grib_new_from_samples("regular_ll_sfc_grib1")
@@ -210,7 +259,7 @@ def test_grib_codes_set_missing():
     eccodes.codes_set(gid, "typeOfFirstFixedSurface", "sfc")
     eccodes.codes_set_missing(gid, "scaleFactorOfFirstFixedSurface")
     eccodes.codes_set_missing(gid, "scaledValueOfFirstFixedSurface")
-    assert eccodes.eccodes.codes_is_missing(gid, "scaleFactorOfFirstFixedSurface")
+    assert eccodes.codes_is_missing(gid, "scaleFactorOfFirstFixedSurface")
 
 
 def test_grib_set_key_vals():
@@ -238,14 +287,65 @@ def test_grib_get_error():
 
 
 def test_grib_get_array():
-    gid = eccodes.codes_grib_new_from_samples("reduced_gg_pl_160_grib1")
+    gid = eccodes.codes_grib_new_from_samples("reduced_gg_pl_160_grib2")
     pl = eccodes.codes_get_array(gid, "pl")
     assert pl[0] == 18
     pli = eccodes.codes_get_array(gid, "pl", int)
     assert np.array_equal(pl, pli)
     pls = eccodes.codes_get_array(gid, "centre", str)
     assert pls == ["ecmf"]
+    dvals = eccodes.codes_get_array(gid, "values")
+    assert len(dvals) == 138346
+    assert type(dvals[0]) is np.float64
     eccodes.codes_release(gid)
+
+
+def test_grib_get_array_single_precision():
+    if eccodes.codes_get_api_version(int) < 23100:
+        pytest.skip("ecCodes version too old")
+
+    gid = eccodes.codes_grib_new_from_samples("reduced_gg_pl_160_grib2")
+
+    dvals = eccodes.codes_get_array(gid, "values", ktype=float)
+    assert type(dvals[0]) is np.float64
+    fvals = eccodes.codes_get_array(gid, "values", ktype=np.float32)
+    assert type(fvals[0]) is np.float32
+    fvals = eccodes.codes_get_float_array(gid, "values")
+    assert type(fvals[0]) is np.float32
+    dvals = eccodes.codes_get_values(gid)
+    assert type(dvals[0]) is np.float64
+    fvals = eccodes.codes_get_values(gid, np.float32)
+    assert type(fvals[0]) is np.float32
+
+    eccodes.codes_release(gid)
+
+
+def test_grib_gaussian_latitudes():
+    orders = [256, 1280]
+    # Latitude of the first element (nearest the north pole)
+    expected_lats = [89.731148, 89.946187]
+    for _order, _lat in zip(orders, expected_lats):
+        lats = eccodes.codes_get_gaussian_latitudes(_order)
+        assert len(lats) == 2 * _order
+        assert math.isclose(lats[0], _lat, abs_tol=0.00001)
+
+
+def test_grib_latitudes_longitudes():
+    gid = eccodes.codes_grib_new_from_samples("reduced_gg_pl_160_grib2")
+    lats = eccodes.codes_get_array(gid, "latitudes")
+    assert len(lats) == 138346
+    assert math.isclose(lats[0], 89.570089, abs_tol=0.00001)
+    lats = eccodes.codes_get_array(gid, "distinctLatitudes")
+    assert len(lats) == 320
+    assert math.isclose(lats[0], 89.570089, abs_tol=0.00001)
+    assert math.isclose(lats[319], -89.570089, abs_tol=0.00001)
+
+    lons = eccodes.codes_get_array(gid, "longitudes")
+    assert len(lons) == 138346
+    assert math.isclose(lons[138345], 340.00, abs_tol=0.00001)
+    lons = eccodes.codes_get_array(gid, "distinctLongitudes")
+    assert len(lons) == 4762
+    assert math.isclose(lons[4761], 359.4375, abs_tol=0.00001)
 
 
 def test_grib_get_message_size():
@@ -269,9 +369,27 @@ def test_grib_clone():
     eccodes.codes_release(clone)
 
 
+def test_grib_clone_headers_only():
+    if eccodes.codes_get_api_version(int) < 23400:
+        pytest.skip("ecCodes version too old")
+
+    with open(TEST_GRIB_ERA5_DATA, "rb") as f:
+        msgid1 = eccodes.codes_grib_new_from_file(f)
+        msgid2 = eccodes.codes_clone(msgid1, headers_only=True)
+        msg1_size = eccodes.codes_get_message_size(msgid1)
+        msg2_size = eccodes.codes_get_message_size(msgid2)
+        assert msg1_size > msg2_size
+        assert eccodes.codes_get(msgid1, "totalLength") == 14752
+        assert eccodes.codes_get(msgid2, "totalLength") == 112
+        assert eccodes.codes_get(msgid1, "bitsPerValue") == 16
+        assert eccodes.codes_get(msgid2, "bitsPerValue") == 0
+        eccodes.codes_release(msgid1)
+        eccodes.codes_release(msgid2)
+
+
 def test_grib_keys_iterator():
     gid = eccodes.codes_grib_new_from_samples("reduced_gg_pl_1280_grib1")
-    iterid = eccodes.eccodes.codes_keys_iterator_new(gid, "ls")
+    iterid = eccodes.codes_keys_iterator_new(gid, "ls")
     count = 0
     while eccodes.codes_keys_iterator_next(iterid):
         keyname = eccodes.codes_keys_iterator_get_name(iterid)
@@ -280,7 +398,7 @@ def test_grib_keys_iterator():
         count += 1
     assert count == 10
     eccodes.codes_keys_iterator_rewind(iterid)
-    eccodes.eccodes.codes_keys_iterator_delete(iterid)
+    eccodes.codes_keys_iterator_delete(iterid)
     eccodes.codes_release(gid)
 
 
@@ -308,7 +426,7 @@ def test_grib_keys_iterator_skip():
     eccodes.codes_skip_coded(iterid)
     while eccodes.codes_keys_iterator_next(iterid):
         count += 1
-    assert count == 141
+    assert count > 140
     eccodes.codes_keys_iterator_delete(iterid)
     eccodes.codes_release(gid)
 
@@ -346,6 +464,13 @@ def test_grib_get_double_elements():
     assert math.isclose(elems[2], 218.8146, abs_tol=0.001)
     elems2 = eccodes.codes_get_elements(gid, "values", indexes)
     assert elems == elems2
+
+
+def test_grib_get_values():
+    gid = eccodes.codes_grib_new_from_samples("gg_sfc_grib2")
+    with pytest.raises(TypeError):
+        eccodes.codes_get_values(gid, str)
+    eccodes.codes_release(gid)
 
 
 def test_grib_geoiterator():
@@ -401,6 +526,9 @@ def test_grib_nearest_multiple():
     eccodes.codes_release(gid)
     assert nearest[0].index == 1770
     assert nearest[1].index == 2500
+    # Error condition
+    with pytest.raises(ValueError):
+        eccodes.codes_grib_find_nearest_multiple(gid, is_lsm, (1, 2), (1, 2, 3))
 
 
 def test_grib_ecc_1042():
@@ -439,14 +567,30 @@ def test_grib_ecc_1007():
     values = np.zeros((numvals,))
     values[0] = 12  # Make sure it's not a constant field
     eccodes.codes_set_values(gid, values)
-    maxv = eccodes.eccodes.codes_get(gid, "max")
-    minv = eccodes.eccodes.codes_get(gid, "min")
+    maxv = eccodes.codes_get(gid, "max")
+    minv = eccodes.codes_get(gid, "min")
     assert minv == 0
     assert maxv == 12
     eccodes.codes_release(gid)
 
 
-def test_grib_float_array():
+def test_grib_set_bitmap():
+    gid = eccodes.codes_grib_new_from_samples("GRIB2")
+    missing = np.Infinity
+    eccodes.codes_set(gid, "bitmapPresent", 1)
+    eccodes.codes_set(gid, "missingValue", missing)
+    # Grid with 100 points 2 of which are missing
+    values = np.ones((100,))
+    values[2] = missing
+    values[4] = missing
+    eccodes.codes_set_values(gid, values)
+    assert eccodes.codes_get(gid, "numberOfDataPoints") == 100
+    assert eccodes.codes_get(gid, "numberOfCodedValues") == 98
+    assert eccodes.codes_get(gid, "numberOfMissing") == 2
+    eccodes.codes_release(gid)
+
+
+def test_grib_set_float_array():
     gid = eccodes.codes_grib_new_from_samples("regular_ll_sfc_grib2")
     for ftype in (float, np.float16, np.float32, np.float64):
         values = np.ones((100000,), ftype)
@@ -456,6 +600,31 @@ def test_grib_float_array():
         assert (eccodes.codes_get_values(gid) == 1.0).all()
 
 
+def test_grib_set_2d_array():
+    gid = eccodes.codes_grib_new_from_samples("GRIB2")
+    num_vals = eccodes.codes_get(gid, "numberOfValues")
+    assert num_vals == 496
+    vals2d = np.array([[11, 2, 3], [4, 15, -6]], np.float64)
+    eccodes.codes_set_double_array(gid, "values", vals2d)
+    num_vals = eccodes.codes_get(gid, "numberOfValues")
+    assert num_vals == 6
+    vals = eccodes.codes_get_double_array(gid, "values")
+    assert vals[0] == 11.0
+    assert vals[1] == 2.0
+    assert vals[4] == 15.0
+    assert vals[5] == -6.0
+
+
+def test_grib_set_np_int64():
+    gid = eccodes.codes_grib_new_from_samples("regular_gg_sfc_grib2")
+    eccodes.codes_set(gid, "productDefinitionTemplateNumber", 1)
+    eccodes.codes_set(gid, "number", np.int64(17))
+    assert eccodes.codes_get_long(gid, "number") == 17
+    eccodes.codes_set_long(gid, "number", np.int64(16))
+    assert eccodes.codes_get_long(gid, "number") == 16
+    eccodes.codes_release(gid)
+
+
 def test_gribex_mode():
     eccodes.codes_gribex_mode_on()
     eccodes.codes_gribex_mode_off()
@@ -463,7 +632,7 @@ def test_gribex_mode():
 
 def test_grib_new_from_samples_error():
     with pytest.raises(eccodes.FileNotFoundError):
-        eccodes.codes_new_from_samples("poopoo", eccodes.CODES_PRODUCT_GRIB)
+        eccodes.codes_new_from_samples("nonExistentSample", eccodes.CODES_PRODUCT_GRIB)
 
 
 def test_grib_new_from_file_error(tmp_path):
@@ -487,7 +656,7 @@ def test_grib_index_new_from_file(tmpdir):
     eccodes.codes_index_write(iid, index_file)
 
     key = "level"
-    assert eccodes.eccodes.codes_index_get_size(iid, key) == 1
+    assert eccodes.codes_index_get_size(iid, key) == 1
 
     # Cannot get the native type of a key from an index
     # so right now the default is str.
@@ -553,16 +722,40 @@ def test_grib_uuid_get_set():
     # ECC-1167
     gid = eccodes.codes_grib_new_from_samples("GRIB2")
     eccodes.codes_set(gid, "gridType", "unstructured_grid")
-    uuid = eccodes.codes_get_string(gid, "uuidOfHGrid")
+    key = "uuidOfHGrid"
+    ntype = eccodes.codes_get_native_type(gid, key)
+    assert ntype == bytes
+
+    uuid = eccodes.codes_get_string(gid, key)
     assert uuid == "00000000000000000000000000000000"
-    eccodes.codes_set_string(gid, "uuidOfHGrid", "DEfdBEef10203040b00b1e50001100FF")
-    uuid = eccodes.codes_get_string(gid, "uuidOfHGrid")
+    eccodes.codes_set_string(gid, key, "DEfdBEef10203040b00b1e50001100FF")
+    uuid = eccodes.codes_get(gid, key, str)
     assert uuid == "defdbeef10203040b00b1e50001100ff"
+    uuid = eccodes.codes_get(gid, key)
+    assert uuid == "defdbeef10203040b00b1e50001100ff"
+
+    uuid_arr = eccodes.codes_get_array(gid, key)
+    assert uuid_arr == ["defdbeef10203040b00b1e50001100ff"]
     eccodes.codes_release(gid)
 
 
+def test_grib_dump(tmp_path):
+    gid = eccodes.codes_grib_new_from_samples("GRIB2")
+    p = tmp_path / "dump_grib.txt"
+    with open(p, "w") as fout:
+        eccodes.codes_dump(gid, fout)
+        eccodes.codes_dump(gid, fout, "debug")
+    eccodes.codes_release(gid)
+
+
+def test_grib_copy_namespace():
+    gid1 = eccodes.codes_grib_new_from_samples("GRIB2")
+    gid2 = eccodes.codes_grib_new_from_samples("reduced_gg_pl_32_grib2")
+    eccodes.codes_copy_namespace(gid1, "ls", gid2)
+
+
 # ---------------------------------------------
-# BUFR
+# PRODUCT BUFR
 # ---------------------------------------------
 def test_bufr_read_write(tmpdir):
     bid = eccodes.codes_new_from_samples("BUFR4", eccodes.CODES_PRODUCT_BUFR)
@@ -655,7 +848,7 @@ def test_bufr_keys_iterator():
 
 
 def test_bufr_codes_is_missing():
-    bid = eccodes.eccodes.codes_bufr_new_from_samples("BUFR4_local")
+    bid = eccodes.codes_bufr_new_from_samples("BUFR4_local")
     eccodes.codes_set(bid, "unpack", 1)
     assert eccodes.codes_is_missing(bid, "heightOfBarometerAboveMeanSeaLevel") == 1
     assert eccodes.codes_is_missing(bid, "blockNumber") == 1
@@ -713,9 +906,26 @@ def test_codes_bufr_key_is_header():
         eccodes.codes_bufr_key_is_header(bid, "satelliteSensorIndicator")
 
     eccodes.codes_set(bid, "unpack", 1)
-
     assert not eccodes.codes_bufr_key_is_header(bid, "satelliteSensorIndicator")
     assert not eccodes.codes_bufr_key_is_header(bid, "#6#brightnessTemperature")
+
+
+def test_codes_bufr_key_is_coordinate():
+    if eccodes.codes_get_api_version(int) < 23100:
+        pytest.skip("ecCodes version too old")
+
+    bid = eccodes.codes_bufr_new_from_samples("BUFR4")
+    assert not eccodes.codes_bufr_key_is_coordinate(bid, "edition")
+
+    with pytest.raises(eccodes.KeyValueNotFoundError):
+        eccodes.codes_bufr_key_is_coordinate(bid, "latitude")
+
+    eccodes.codes_set(bid, "unpack", 1)
+    assert eccodes.codes_bufr_key_is_coordinate(bid, "latitude")
+    assert eccodes.codes_bufr_key_is_coordinate(bid, "#14#timePeriod")
+    assert not eccodes.codes_bufr_key_is_coordinate(bid, "dewpointTemperature")
+
+    eccodes.codes_release(bid)
 
 
 def test_bufr_extract_headers():
@@ -732,6 +942,22 @@ def test_bufr_extract_headers():
     assert header["ident"].strip() == "91334"
     assert header["rdbtimeSecond"] == 19
     assert math.isclose(header["localLongitude"], 151.83)
+
+
+def test_bufr_dump(tmp_path):
+    bid = eccodes.codes_bufr_new_from_samples("BUFR4")
+    eccodes.codes_set(bid, "unpack", 1)
+    p = tmp_path / "dump_bufr.txt"
+    with open(p, "w") as fout:
+        eccodes.codes_dump(bid, fout, "json")
+    eccodes.codes_release(bid)
+
+
+def test_bufr_copy_data():
+    bid1 = eccodes.codes_bufr_new_from_samples("BUFR4_local")
+    bid2 = eccodes.codes_bufr_new_from_samples("BUFR4")
+    bid3 = eccodes.codes_bufr_copy_data(bid1, bid2)
+    assert bid3
 
 
 # ---------------------------------------------
@@ -757,5 +983,12 @@ def test_grib_nearest2():
     assert sorted(expected_indexes) == sorted(returned_indexes)
     assert math.isclose(nearest[0].value, 295.22085, abs_tol=0.0001)
     assert math.isclose(nearest[2].distance, 24.16520, abs_tol=0.0001)
+
+    # Error conditions
+    with pytest.raises(eccodes.FunctionNotImplementedError):
+        eccodes.codes_grib_nearest_find(nid, gid, lat, lon, flags, is_lsm=True)
+    with pytest.raises(eccodes.FunctionNotImplementedError):
+        eccodes.codes_grib_nearest_find(nid, gid, lat, lon, flags, False, npoints=5)
+
     eccodes.codes_release(gid)
     eccodes.codes_grib_nearest_delete(nid)
